@@ -18,6 +18,7 @@ graphical_reqs = [
     'python-uinput',
     'opencv-python',
     'pandas',
+    'numpy',
     'pytesseract',
     'keyboard',
 ]
