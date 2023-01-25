@@ -10,6 +10,8 @@ from io import StringIO
 import pytesseract
 import keyboard
 import uinput
+import functools
+
 
 class Screen():
     '''Captures the screenshots'''
@@ -23,24 +25,21 @@ class Screen():
         Runs ffmpeg to take a screenshot.
 
         The filename of screenshot is then returned.
-        If no screenshot could be captured, None object is returned.
         '''
 
         filename = f'/tmp/SC-tests/{self.screenshot_num}.png'
-        out = run(['ffmpeg', '-y', '-f', 'kmsgrab', '-i', '-',
-             '-vf', 'hwdownload,format=bgr0', '-frames', '1',
+        out = run(['ffmpeg', '-hide_banner', '-y', '-f', 'kmsgrab', '-i', '-',
+             '-vf', 'hwdownload,format=bgr0', '-frames', '1', '-update', '1',
              filename
         ])
 
-        if out.returncode != 0:
-            filename = None
-
+        self.screenshot_num += 1
         return filename
+
 
 class Mouse():
     def __init__(self):
         run(['modprobe', 'uinput'], check=True)
-        sleep(5) # TODO remove later
         # initialize the uinput device
         self.device = uinput.Device([
             uinput.REL_X,
@@ -63,12 +62,12 @@ class Mouse():
         # Move to correct X coordinate
         for i in range(x):
             self.device.emit(uinput.REL_X, 1)
-            sleep(0.01)
+            sleep(0.005)
 
         # Move to correct Y coordinate
         for i in range(y):
             self.device.emit(uinput.REL_Y, 1)
-            sleep(0.01)
+            sleep(0.005)
 
     def click(self, button='left'):
         '''
@@ -91,23 +90,54 @@ class Mouse():
         # release the button
         self.device.emit(uinput_button, 0)
 
+# Wrapper class for keyboard library
+class KB():
+    def __init__(self):
+        def kb_decorator(fn):
+            def wrapper(*args,**kwargs):
+                print('keyboard...')
+                fn(*args, **kwargs)
+                sleep(1)
+            return wrapper
+
+        # Workarounds for keyboard library
+        # keyboard.write types nothing if the delay is not set
+        self.write = kb_decorator(functools.partial(keyboard.write, delay=0.1))
+        self.send = kb_decorator(keyboard.send)
+        # For some reason the first keypress is never sent
+        # So this effectively does nothing
+        keyboard.send('enter')
+
+
 class GUI():
     def __init__(self):
         # Create the directory for screenshots
-        sceenshot_directory = '/tmp/SC-tests'
-        os.mkdirs('/tmp/SC-tests', exist_ok=True)
+        # TODO parametrize?
+        self.screenshot_directory = '/tmp/SC-tests'
+        os.makedirs(self.screenshot_directory, exist_ok=True)
 
-        self.screen = Screen(screenshot_directory)
         self.mouse = Mouse()
 
-        # Workaround for keyboard library
-        # For some reason the first keypress is never sent
-        keyboard.send('enter')
+        self.kb = KB()
 
+
+    def __enter__(self):
+        self.screen = Screen(self.screenshot_directory)
         # By restarting gdm, the system gets into defined state
         run(['systemctl', 'restart', 'gdm'], check=True)
+        # Cannot screenshot before gdm starts displaying
+        # This would break the display
+        sleep(5)
 
-    def _image_to_data(self, filename):
+        return self
+
+
+    def __exit__(self, type, value, traceback):
+        # Gather the screenshots, generate report
+        pass
+
+    @staticmethod
+    def _image_to_data(filename):
         '''
         Convert screenshot into dataframe of words with their coordinates.
         '''
@@ -119,7 +149,7 @@ class GUI():
         df = pd.read_csv(StringIO(image_data_str), sep='\t', lineterminator='\n')
         return df
 
-
+    @staticmethod
     def _images_same(filename1, filename2):
         '''Compare two images, return True if they are completely identical.'''
         im1 = cv2.imread(filename1)
@@ -130,15 +160,10 @@ class GUI():
             return False
 
         # Check if value of every pixel is the same
-        if np.bitwise_xor(image1, image2).any():
+        if np.bitwise_xor(im1, im2).any():
             return False
 
         return True
-
-
-    def keyboard_write(self, text):
-        # delay is necesary as a workaround for keybord library
-        keyboard.write(text, delay=0.1)
 
 
     def click_on(self, key: str, timeout=30):
@@ -147,13 +172,8 @@ class GUI():
         # Repeat screenshotting, until the key is found
         while time() < end_time:
             # Capture the screenshot
-            screenshot = None
-            while screenshot is None and time() < end_time:
-                # If capturing fails, try again
-                screenshot = self.screen.screenshot()
-
-            df = self._image_to_data(filename)
-
+            screenshot = self.screen.screenshot()
+            df = self._image_to_data(screenshot)
             selection = df['text'] == key
 
             # If there is no matching word, try again
@@ -179,11 +199,58 @@ class GUI():
 
         self.mouse.move(x, y)
         self.mouse.click()
+        sleep(1)
 
-
-    def wait_still_screen(self, time_still=5, timeout=60):
+    def assert_text(self, key: str, timeout=0):
         '''
-        Wait while until the screen content stops changing.
+        Given key must be found in a screenshot before the timeout.
+
+        If the key is not found, exception is raised.
+        Zero timeout means that only one screenshot will be taken and evaluated.
+        '''
+
+        end_time = time() + timeout
+        first = True
+
+        while first or time() < end_time:
+            first = False
+            # Capture the screenshot
+            screenshot = self.screen.screenshot()
+            df = self._image_to_data(screenshot)
+            selection = df['text'] == key
+
+            # The key was found
+            if selection.sum() != 0:
+                return
+
+        raise Exception('The key was not found.')
+
+
+    def assert_no_text(self, key: str, timeout=0):
+        '''
+        If the given key is found in any screenshot before the timeout, exception is raised.
+
+        Zero timeout means that only one screenshot will be taken and evaluated.
+        '''
+
+        end_time = time() + timeout
+        first = True
+
+        while first or time() < end_time:
+            first = False
+            # Capture the screenshot
+            screenshot = self.screen.screenshot()
+            df = self._image_to_data(screenshot)
+            selection = df['text'] == key
+
+            # The key was found, but should not be
+            if selection.sum() != 0:
+                raise Exception('The key was found in the screenshot.')
+
+
+    def wait_still_screen(self, time_still=5, timeout=30):
+        '''
+        Wait until the screen content stops changing.
 
         When nothing on screen has changed for time_still seconds, continue.
         If the screen content is changing permanently,
@@ -202,7 +269,7 @@ class GUI():
                 screenshot = self.screen.screenshot()
 
             # If this is the first loop, there is no last screenshot
-            if last_screenshot is None or not _images_same(screenshot, last_screenshot):
+            if last_screenshot is None or not self._images_same(screenshot, last_screenshot):
                 last_screenshot = screenshot
                 # Image has changed, refresh time_still_end
                 time_still_end = time() + time_still
