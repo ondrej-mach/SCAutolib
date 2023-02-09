@@ -1,4 +1,4 @@
-from SCAutolib import run
+from SCAutolib import run, logger
 
 import os
 from time import sleep, time
@@ -55,6 +55,8 @@ class Mouse():
     def move(self, x: int, y: int):
         """Moves the mouse cursor to specified absolute coordinate."""
 
+        logger.info(f'Moving mouse to ({x, y})')
+
         for uinput_axis, value in [(uinput.REL_X, x), (uinput.REL_Y, y)]:
             # Go all the way up/left with the mouse
             sleep(self.FLICK_TIME)
@@ -80,6 +82,8 @@ class Mouse():
         }
         uinput_button = button_map[button]
 
+        logger.info(f'Clicking the {button} mouse button')
+
         # press the button
         self.device.emit(uinput_button, 1)
         # wait a little
@@ -94,7 +98,7 @@ class KB():
     def __init__(self):
         def kb_decorator(fn):
             def wrapper(*args, **kwargs):
-                print('keyboard...')
+                logger.info('Using keyboard ...')  # TODO more info
                 fn(*args, **kwargs)
                 sleep(1)
             return wrapper
@@ -138,15 +142,18 @@ class GUI():
         """
         Convert screenshot into dataframe of words with their coordinates.
         """
+        UPSCALING_FACTOR = 2
+
         image = cv2.imread(filename)
         grayscale = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         upscaled = cv2.resize(grayscale,
-                              dsize=None, fx=2, fy=2,
+                              dsize=None, fx=UPSCALING_FACTOR, fy=UPSCALING_FACTOR,
                               interpolation=cv2.INTER_LANCZOS4)
         _, binary = cv2.threshold(upscaled, 120, 255, cv2.THRESH_BINARY_INV)
         image_data_str = pytesseract.image_to_data(binary)
         df = pd.read_csv(StringIO(image_data_str),
                          sep='\t', lineterminator='\n')
+        df[['left', 'top', 'width', 'height']] //= UPSCALING_FACTOR
         return df
 
     @staticmethod
@@ -173,22 +180,24 @@ class GUI():
             # Capture the screenshot
             screenshot = self.screen.screenshot()
             df = self._image_to_data(screenshot)
+            logger.debug(df)
             selection = df['text'] == key
 
             # If there is no matching word, try again
             if selection.sum() == 0:
+                logger.info('Found no match, trying again')
                 continue
 
             # Exactly one word matching, exit the loop
             elif selection.sum() == 1:
+                logger.info('Found exactly one match')
                 item = df[selection]
                 break
 
             # More than one word matches, choose the first match
             # Probably deterministic, but it should not be relied upon
             else:
-                print('Too many to choose from')
-                # TODO replace the print function
+                logger.info('Found multiple matches')
                 item = df.iloc[0]
 
         if time() >= end_time:
@@ -269,11 +278,13 @@ class GUI():
                 # If capturing fails, try again
                 screenshot = self.screen.screenshot()
 
-            different = not self._images_same(screenshot, last_screenshot)
             # If this is the first loop, there is no last screenshot
-            if last_screenshot is None or different:
+            if last_screenshot is None:
                 last_screenshot = screenshot
-                # Image has changed, refresh time_still_end
+                time_still_end = time() + time_still
+            # If the image has changed, refresh the time
+            elif not self._images_same(screenshot, last_screenshot):
+                last_screenshot = screenshot
                 time_still_end = time() + time_still
 
         # If the loop was ended by timeout, it is an error
