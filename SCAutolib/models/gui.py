@@ -50,7 +50,8 @@ class Mouse():
 
         self.MAX_RES = 10000
         self.FLICK_TIME = 0.1
-        self.STEP_TIME = 0.005
+        self.STEP_TIME = 0.01
+        self.CLICK_HOLD_TIME = 0.1
 
     def move(self, x: int, y: int):
         """Moves the mouse cursor to specified absolute coordinate."""
@@ -87,7 +88,7 @@ class Mouse():
         # press the button
         self.device.emit(uinput_button, 1)
         # wait a little
-        sleep(0.1)
+        sleep(self.CLICK_HOLD_TIME)
         # release the button
         self.device.emit(uinput_button, 0)
 
@@ -95,12 +96,14 @@ class Mouse():
 class KB():
     """Wrapper class for keyboard library."""
 
-    def __init__(self):
+    def __init__(self, wait_time=5):
+        self.WAIT_TIME = wait_time
+
         def kb_decorator(fn):
             def wrapper(*args, **kwargs):
                 logger.info('Using keyboard ...')  # TODO more info
                 fn(*args, **kwargs)
-                sleep(1)
+                sleep(self.WAIT_TIME)
             return wrapper
 
         # Workarounds for keyboard library
@@ -113,15 +116,16 @@ class KB():
 
 
 class GUI():
-    def __init__(self):
+    def __init__(self, wait_time=5):
+        self.WAIT_TIME = wait_time
+        self.GDM_INIT_TIME = 10
         # Create the directory for screenshots
         # TODO parametrize?
         self.screenshot_directory = '/tmp/SC-tests'
         os.makedirs(self.screenshot_directory, exist_ok=True)
 
         self.mouse = Mouse()
-
-        self.kb = KB()
+        self.kb = KB(self.WAIT_TIME)
 
     def __enter__(self):
         self.screen = Screen(self.screenshot_directory)
@@ -129,7 +133,7 @@ class GUI():
         run(['systemctl', 'restart', 'gdm'], check=True)
         # Cannot screenshot before gdm starts displaying
         # This would break the display
-        sleep(5)
+        sleep(self.GDM_INIT_TIME)
 
         return self
 
@@ -147,7 +151,9 @@ class GUI():
         image = cv2.imread(filename)
         grayscale = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         upscaled = cv2.resize(grayscale,
-                              dsize=None, fx=UPSCALING_FACTOR, fy=UPSCALING_FACTOR,
+                              dsize=None,
+                              fx=UPSCALING_FACTOR,
+                              fy=UPSCALING_FACTOR,
                               interpolation=cv2.INTER_LANCZOS4)
         _, binary = cv2.threshold(upscaled, 120, 255, cv2.THRESH_BINARY_INV)
         image_data_str = pytesseract.image_to_data(binary)
@@ -208,7 +214,7 @@ class GUI():
 
         self.mouse.move(x, y)
         self.mouse.click()
-        sleep(1)
+        sleep(self.WAIT_TIME)
 
     def assert_text(self, key: str, timeout: float = 0):
         """
