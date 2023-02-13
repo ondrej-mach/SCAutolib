@@ -111,7 +111,7 @@ class Controller:
                 "free/el/rpmfusion-free-release-" + str(version) + \
                 ".noarch.rpm"
 
-            run(["dnf", "install", "--nogpgcheck", link])
+            run(["dnf", "install", "-y", "--nogpgcheck", link])
             packages += ["tesseract", "ffmpeg"]
 
         # Prepare for virtual cards

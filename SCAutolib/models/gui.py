@@ -13,23 +13,23 @@ import functools
 
 
 class Screen():
-    """Captures the screenshots"""
+    """Captures the screenshots."""
 
     def __init__(self, directory: str):
         self.directory = directory
         self.screenshot_num = 1
 
     def screenshot(self):
-        """
-        Runs ffmpeg to take a screenshot.
+        """Runs ffmpeg to take a screenshot.
 
-        The filename of screenshot is then returned.
+        :return: filename of the screenshot
+        :rtype: str
         """
 
-        filename = f'/tmp/SC-tests/{self.screenshot_num}.png'
+        filename = f'{self.directory}/{self.screenshot_num}.png'
         run(['ffmpeg', '-hide_banner', '-y', '-f', 'kmsgrab', '-i', '-', '-vf',
              'hwdownload,format=bgr0', '-frames', '1', '-update', '1',
-             filename])
+             filename], check=True)
 
         self.screenshot_num += 1
         return filename
@@ -70,10 +70,9 @@ class Mouse():
                 sleep(self.STEP_TIME)
 
     def click(self, button: str = 'left'):
-        """
-        Clicks the any button of the mouse.
-
-        Button value can be 'left', 'right' or 'middle'.
+        """Clicks the any button of the mouse.
+        :param button: mouse button to click, defaults to 'left'
+        Possible values 'left', 'right' or 'middle'.
         """
 
         button_map = {
@@ -101,14 +100,19 @@ class KB():
 
         def kb_decorator(fn):
             def wrapper(*args, **kwargs):
-                logger.info('Using keyboard ...')  # TODO more info
+                # Format the arguments for logging
+                kwargs_list = ["=".join((key, repr(value)))
+                               for key, value in kwargs.items()]
+                args_list = [repr(value) for value in list(args)]
+                all_args = ", ".join(args_list + kwargs_list)
+                logger.info(f'Calling keyboard.{fn.__name__}({all_args})')
                 fn(*args, **kwargs)
                 sleep(self.WAIT_TIME)
             return wrapper
 
         # Workarounds for keyboard library
         # keyboard.write types nothing if the delay is not set
-        self.write = kb_decorator(functools.partial(keyboard.write, delay=0.1))
+        self.write = functools.partial(kb_decorator(keyboard.write), delay=0.1)
         self.send = kb_decorator(keyboard.send)
         # For some reason the first keypress is never sent
         # So this effectively does nothing
@@ -181,6 +185,7 @@ class GUI():
     def click_on(self, key: str, timeout: float = 30):
         end_time = time() + timeout
 
+        item = None
         # Repeat screenshotting, until the key is found
         while time() < end_time:
             # Capture the screenshot
@@ -205,8 +210,9 @@ class GUI():
             else:
                 logger.info('Found multiple matches')
                 item = df.iloc[0]
+                break
 
-        if time() >= end_time:
+        if item is None:
             raise Exception('Found no matching key in any screenshot.')
 
         x = int(item['left'] + item['width']/2)
