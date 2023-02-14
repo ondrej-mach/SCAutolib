@@ -19,17 +19,30 @@ class Screen():
         self.directory = directory
         self.screenshot_num = 1
 
-    def screenshot(self):
+    def screenshot(self, timeout: float = 30):
         """Runs ffmpeg to take a screenshot.
 
         :return: filename of the screenshot
         :rtype: str
         """
 
+        logger.debug(f"Taking screenshot number {self.screenshot_num}")
+
         filename = f'{self.directory}/{self.screenshot_num}.png'
-        run(['ffmpeg', '-hide_banner', '-y', '-f', 'kmsgrab', '-i', '-', '-vf',
-             'hwdownload,format=bgr0', '-frames', '1', '-update', '1',
-             filename], check=True)
+        t_end = time() + timeout
+        captured = False
+
+        while time() < t_end and not captured:
+            out = run(['ffmpeg', '-hide_banner', '-y', '-f',
+                       'kmsgrab', '-i', '-', '-vf', 'hwdownload,format=bgr0',
+                       '-frames', '1', '-update', '1',
+                       filename], check=False, print_=False)
+
+            if out.returncode == 0:
+                captured = True
+
+        if not captured:
+            raise Exception('Could not capture screenshot within timeout.')
 
         self.screenshot_num += 1
         return filename
@@ -56,7 +69,7 @@ class Mouse():
     def move(self, x: int, y: int):
         """Moves the mouse cursor to specified absolute coordinate."""
 
-        logger.info(f'Moving mouse to ({x, y})')
+        logger.info(f'Moving mouse to {x, y}')
 
         for uinput_axis, value in [(uinput.REL_X, x), (uinput.REL_Y, y)]:
             # Go all the way up/left with the mouse
@@ -124,8 +137,7 @@ class GUI():
         self.WAIT_TIME = wait_time
         self.GDM_INIT_TIME = 10
         # Create the directory for screenshots
-        # TODO parametrize?
-        self.screenshot_directory = '/tmp/SC-tests'
+        self.screenshot_directory = '/tmp/SC-tests/' + str(int(time()))
         os.makedirs(self.screenshot_directory, exist_ok=True)
 
         self.mouse = Mouse()
@@ -164,6 +176,8 @@ class GUI():
         df = pd.read_csv(StringIO(image_data_str),
                          sep='\t', lineterminator='\n')
         df[['left', 'top', 'width', 'height']] //= UPSCALING_FACTOR
+
+        logger.debug(df)
         return df
 
     @staticmethod
@@ -183,15 +197,25 @@ class GUI():
         return True
 
     def click_on(self, key: str, timeout: float = 30):
-        end_time = time() + timeout
+        """Clicks matching word on the screen.
 
+        """
+        logger.info(f"Trying to find key='{key}' to click on.")
+
+        end_time = time() + timeout
         item = None
+        first_scr = None
+
         # Repeat screenshotting, until the key is found
         while time() < end_time:
             # Capture the screenshot
             screenshot = self.screen.screenshot()
+
+            last_scr = screenshot
+            if first_scr is None:
+                first_scr = screenshot
+
             df = self._image_to_data(screenshot)
-            logger.debug(df)
             selection = df['text'] == key
 
             # If there is no matching word, try again
@@ -213,7 +237,8 @@ class GUI():
                 break
 
         if item is None:
-            raise Exception('Found no matching key in any screenshot.')
+            raise Exception(f"Found no key='{key}' in screenshots " +
+                            f"{first_scr} to {last_scr}")
 
         x = int(item['left'] + item['width']/2)
         y = int(item['top'] + item['height']/2)
@@ -230,6 +255,8 @@ class GUI():
         Zero timeout means that only one screenshot
         will be taken and evaluated.
         """
+
+        logger.info(f"Trying to find key='{key}'")
 
         end_time = time() + timeout
         first = True
@@ -255,6 +282,8 @@ class GUI():
         Zero timeout means that only one screenshot
         will be taken and evaluated.
         """
+        logger.info(f"Trying to find key='{key}'" +
+                    " (it should not be in the screenshot)")
 
         end_time = time() + timeout
         first = True
@@ -268,37 +297,5 @@ class GUI():
 
             # The key was found, but should not be
             if selection.sum() != 0:
-                raise Exception('The key was found in the screenshot.')
-
-    def wait_still_screen(self, time_still: float = 5, timeout: float = 30):
-        """
-        Wait until the screen content stops changing.
-
-        When nothing on screen has changed for time_still seconds, continue.
-        If the screen content is changing permanently,
-        fail with exception after timeout seconds.
-        """
-
-        timeout_end = time() + timeout
-        time_still_end = time() + time_still
-        last_screenshot = None
-
-        while time() < timeout_end and time() < time_still_end:
-            # Capture the screenshot
-            screenshot = None
-            while screenshot is None and time() < timeout_end:
-                # If capturing fails, try again
-                screenshot = self.screen.screenshot()
-
-            # If this is the first loop, there is no last screenshot
-            if last_screenshot is None:
-                last_screenshot = screenshot
-                time_still_end = time() + time_still
-            # If the image has changed, refresh the time
-            elif not self._images_same(screenshot, last_screenshot):
-                last_screenshot = screenshot
-                time_still_end = time() + time_still
-
-        # If the loop was ended by timeout, it is an error
-        if time() >= timeout_end:
-            raise Exception('Screen contents were changing until timeout.')
+                raise Exception(f"The key='{key}' was found " +
+                                f"in the screenshot {screenshot}")
