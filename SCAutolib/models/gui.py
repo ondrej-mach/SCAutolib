@@ -51,36 +51,35 @@ class Screen():
 class Mouse():
     def __init__(self):
         run(['modprobe', 'uinput'], check=True)
+
+        # Maximum coordinate for both axis
+        self.ABS_MAX = 2**16
+
         # initialize the uinput device
-        self.device = uinput.Device([
-            uinput.REL_X,
-            uinput.REL_Y,
+        self.device = uinput.Device((
+            uinput.ABS_X + (0, self.ABS_MAX, 0, 0),
+            uinput.ABS_Y + (0, self.ABS_MAX, 0, 0),
             uinput.BTN_LEFT,
             uinput.BTN_MIDDLE,
             uinput.BTN_RIGHT,
             uinput.REL_WHEEL,
-        ])
+        ))
 
-        self.MAX_RES = 10000
-        self.FLICK_TIME = 0.1
-        self.STEP_TIME = 0.01
         self.CLICK_HOLD_TIME = 0.1
 
-    def move(self, x: int, y: int):
+    def move(self, x: float, y: float):
         """Moves the mouse cursor to specified absolute coordinate."""
 
-        logger.info(f'Moving mouse to {x, y}')
+        logger.info(f'Moving mouse to {x, y})')
 
-        for uinput_axis, value in [(uinput.REL_X, x), (uinput.REL_Y, y)]:
-            # Go all the way up/left with the mouse
-            sleep(self.FLICK_TIME)
-            self.device.emit(uinput_axis, -self.MAX_RES)
-            sleep(self.FLICK_TIME)
+        for uinput_axis, value in [(uinput.ABS_X, x), (uinput.ABS_Y, y)]:
+            # Check if value between 0 and 1
+            assert ((value >= 0) and (value <= 1))
+            converted = int(value * self.ABS_MAX)
+            self.device.emit(uinput_axis, converted, syn=False)
 
-            # Go to the exact coordinate
-            for i in range(value):
-                self.device.emit(uinput_axis, 1)
-                sleep(self.STEP_TIME)
+        # Both axis move at once
+        self.device.syn()
 
     def click(self, button: str = 'left'):
         """Clicks the any button of the mouse.
@@ -175,7 +174,10 @@ class GUI():
         image_data_str = pytesseract.image_to_data(binary)
         df = pd.read_csv(StringIO(image_data_str),
                          sep='\t', lineterminator='\n')
-        df[['left', 'top', 'width', 'height']] //= UPSCALING_FACTOR
+
+        yres, xres = binary.shape[:2]
+        df[['left', 'width']] /= xres
+        df[['top', 'height']] /= yres
 
         logger.debug(df)
         return df
@@ -240,10 +242,11 @@ class GUI():
             raise Exception(f"Found no key='{key}' in screenshots " +
                             f"{first_scr} to {last_scr}")
 
-        x = int(item['left'] + item['width']/2)
-        y = int(item['top'] + item['height']/2)
+        x = float(item['left'] + item['width']/2)
+        y = float(item['top'] + item['height']/2)
 
         self.mouse.move(x, y)
+        sleep(0.5)
         self.mouse.click()
         sleep(self.WAIT_TIME)
 
