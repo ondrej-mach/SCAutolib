@@ -105,14 +105,8 @@ class Controller:
             packages.append("gdm")
 
         if graphical:
-            # install RPM fusion free for ffmpeg
-            version = int(run("rpm -E %rhel").stdout)
-            link = "https://mirrors.rpmfusion.org/" + \
-                "free/el/rpmfusion-free-release-" + str(version) + \
-                ".noarch.rpm"
-
-            run(["dnf", "install", "-y", "--nogpgcheck", link])
-            packages += ["tesseract", "ffmpeg"]
+            # ffmpeg-free is in EPEL repo
+            packages += ["tesseract", "ffmpeg-free"]
 
         # Prepare for virtual cards
         if "virtual" in [u["card_type"] for u in self.lib_conf["users"]]:

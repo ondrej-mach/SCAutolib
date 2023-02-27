@@ -16,13 +16,17 @@ class Screen():
     """Captures the screenshots."""
 
     def __init__(self, directory: str):
+        """Init method
+        :param directory: Path to directory, where the screenshots
+            will be saved.
+        """
         self.directory = directory
         self.screenshot_num = 1
 
     def screenshot(self, timeout: float = 30):
         """Runs ffmpeg to take a screenshot.
 
-        :return: filename of the screenshot
+        :return: Absolute path to the screenshot
         :rtype: str
         """
 
@@ -32,6 +36,8 @@ class Screen():
         t_end = time() + timeout
         captured = False
 
+        # if the ffmpeg command fails,
+        # try screenshotting again until the timeout
         while time() < t_end and not captured:
             out = run(['ffmpeg', '-hide_banner', '-y', '-f',
                        'kmsgrab', '-i', '-', '-vf', 'hwdownload,format=bgr0',
@@ -49,6 +55,9 @@ class Screen():
 
 
 class Mouse():
+    """Controls the mouse of the system under test
+    """
+
     def __init__(self):
         run(['modprobe', 'uinput'], check=True)
 
@@ -68,7 +77,13 @@ class Mouse():
         self.CLICK_HOLD_TIME = 0.1
 
     def move(self, x: float, y: float):
-        """Moves the mouse cursor to specified absolute coordinate."""
+        """Moves the mouse cursor to specified absolute coordinate.
+        Both coordinates are float numbers in range from 0 to 1.
+        These get mapped to the screen resolution in the compositor.
+
+        :param x: X coordinate of the cursor
+        :param y: Y coordinate of the cursor
+        """
 
         logger.info(f'Moving mouse to {x, y})')
 
@@ -82,9 +97,10 @@ class Mouse():
         self.device.syn()
 
     def click(self, button: str = 'left'):
-        """Clicks the any button of the mouse.
+        """Clicks any button of the mouse.
+
         :param button: mouse button to click, defaults to 'left'
-        Possible values 'left', 'right' or 'middle'.
+            Possible values 'left', 'right' or 'middle'.
         """
 
         button_map = {
@@ -107,7 +123,7 @@ class Mouse():
 class KB():
     """Wrapper class for keyboard library."""
 
-    def __init__(self, wait_time=5):
+    def __init__(self, wait_time: float = 5):
         self.WAIT_TIME = wait_time
 
         def kb_decorator(fn):
@@ -132,7 +148,14 @@ class KB():
 
 
 class GUI():
-    def __init__(self, wait_time=5):
+    """Represents the GUI and allows conrolling the system under test."""
+
+    def __init__(self, wait_time: float = 5):
+        """Initializes the GUI of system under test.
+
+        :param wait_time: Time to wait after each action
+        """
+
         self.WAIT_TIME = wait_time
         self.GDM_INIT_TIME = 10
         # Create the directory for screenshots
@@ -171,9 +194,7 @@ class GUI():
                               fy=UPSCALING_FACTOR,
                               interpolation=cv2.INTER_LANCZOS4)
         _, binary = cv2.threshold(upscaled, 120, 255, cv2.THRESH_BINARY_INV)
-        image_data_str = pytesseract.image_to_data(binary)
-        df = pd.read_csv(StringIO(image_data_str),
-                         sep='\t', lineterminator='\n')
+        df = pytesseract.image_to_data(binary, output_type='data.frame')
 
         yres, xres = binary.shape[:2]
         df[['left', 'width']] /= xres
@@ -235,7 +256,7 @@ class GUI():
             # Probably deterministic, but it should not be relied upon
             else:
                 logger.info('Found multiple matches')
-                item = df.iloc[0]
+                item = df[selection].iloc[0]
                 break
 
         if item is None:
