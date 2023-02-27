@@ -129,7 +129,7 @@ class Controller:
             raise exceptions.SCAutolibException(msg)
 
         if graphical:
-            run(['dnf', 'groupinstall', 'GNOME Desktop Environment', '-y'])
+            run(['dnf', 'groupinstall', 'Server with GUI', '-y'])
 
         run(['dnf', 'groupinstall', "Smart Card Support", '-y'])
         logger.debug("Smart Card Support group in installed.")
