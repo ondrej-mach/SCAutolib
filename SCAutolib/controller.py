@@ -108,8 +108,7 @@ class Controller:
             packages.append("gdm")
 
         if graphical:
-            # ffmpeg-free is in EPEL repo
-            packages += ["tesseract", "ffmpeg-free"]
+            packages += ["tesseract"]
 
         # Prepare for virtual cards
         if "virtual" in [u["card_type"] for u in self.lib_conf["users"]]:
@@ -132,7 +131,24 @@ class Controller:
             raise exceptions.SCAutolibException(msg)
 
         if graphical:
-            run(['dnf', 'groupinstall', 'Server with GUI', '-y'])
+            if install_missing:
+                run(['dnf', 'groupinstall', 'Server with GUI', '-y'])
+
+                try:
+                    # ffmpeg-free is in EPEL repo, but only for rhel 9
+                    run(['dnf', 'install', '-y', 'ffmpeg-free'])
+
+                except Exception:
+                    # if ffmpeg-free cannot be installed
+                    # it is necessary to enable rpmfusion repo
+                    # and install normal ffmpeg
+                    rhel_version = run(['rpm', '-E', '%rhel']).stdout.strip()
+                    link = ('https://download1.rpmfusion.org/'
+                            'free/el/rpmfusion-free-release-'
+                            + rhel_version + '.noarch.rpm')
+                    run(['dnf', 'install', '-y', link])
+                    run(['dnf', 'install', '-y', 'ffmpeg'])
+
             # disable subsription message
             run(['systemctl', '--global', 'mask',
                  'org.gnome.SettingsDaemon.Subscription.target'])
