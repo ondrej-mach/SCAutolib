@@ -156,6 +156,11 @@ class Controller:
             self.dconf_file.create()
             self.dconf_file.save()
             run('dconf update')
+            # disable gnome-initial-setup (RHEL8 only)
+            filename = ('/etc/xdg/autostart/'
+                        'gnome-initial-setup-first-login.desktop')
+            with open(filename, 'a') as f:
+                f.write('X-GNOME-Autostart-enabled=false')
 
         run(['dnf', 'groupinstall', "Smart Card Support", '-y'])
         logger.debug("Smart Card Support group in installed.")

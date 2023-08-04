@@ -311,6 +311,18 @@ class GUI:
         self.mouse.click()
         sleep(self.wait_time)
 
+    @log_decorator
+    def wake_by_mouse(self):
+        """Moves the mouse to wake the screen.
+        """
+        logger.info(f"Moving the mouse around to wake the screen")
+        self.mouse.move(0.4, 0.4)
+        sleep(0.5)
+        self.mouse.move(0.6, 0.6)
+        sleep(0.5)
+        self.mouse.move(0.4, 0.4)
+        sleep(1)
+
     @action_decorator
     @log_decorator
     def kb_write(self, *args, **kwargs):

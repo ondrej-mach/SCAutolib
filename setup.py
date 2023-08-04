@@ -14,11 +14,12 @@ with requirements.open() as f:
 with readme.open() as f:
     long_description = f.read()
 
+# Install commented packages from system package manager
 graphical_reqs = [
-    'python-uinput',
-    'opencv-python',
-    'pandas',
-    'numpy',
+    'python-uinput',  # needs gcc in order to compile
+    # 'opencv-python',
+    # 'pandas',
+    # 'numpy',
     'pytesseract',
     'keyboard',
 ]
